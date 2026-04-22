@@ -483,24 +483,45 @@ document.getElementById('create-job-confirm').addEventListener('click', () => {
   if (!name) return;
   pendingJobName = name;
   document.getElementById('create-job-modal').classList.remove('open');
-  document.getElementById('map').classList.add('pin-drop-mode');
   const banner = document.getElementById('pin-drop-banner');
-  banner.textContent = `TAP MAP TO PLACE PIN FOR: "${name.toUpperCase()}"`;
+  banner.textContent = 'TAP MAP TO PLACE PIN FOR: "' + name.toUpperCase() + '"';
   banner.style.display = 'block';
-  map.once('click', async (e) => {
-    document.getElementById('map').classList.remove('pin-drop-mode');
-    banner.style.display = 'none';
-    if (!pendingJobName) return;
-    const jid = 'job-' + Date.now();
-    await setDoc(doc(db,'jobs',jid), {
-      name: pendingJobName,
-      lat: e.latlng.lat,
-      lng: e.latlng.lng,
-      createdBy: myEntry.name,
-      createdAt: { seconds: Math.floor(Date.now()/1000), nanoseconds: 0 }
-    });
-    pendingJobName = null;
-  });
+
+  // Delay so modal close click doesn't immediately fire the map handler
+  setTimeout(() => {
+    document.getElementById('map').classList.add('pin-drop-mode');
+
+    function onMapClick(e) {
+      map.off('click', onMapClick);
+      document.removeEventListener('keydown', onKeyCancel);
+      document.getElementById('map').classList.remove('pin-drop-mode');
+      banner.style.display = 'none';
+      if (!pendingJobName) return;
+      const jid = 'job-' + Date.now();
+      const jobName = pendingJobName;
+      pendingJobName = null;
+      setDoc(doc(db, 'jobs', jid), {
+        name: jobName,
+        lat: e.latlng.lat,
+        lng: e.latlng.lng,
+        createdBy: myEntry.name,
+        createdAt: { seconds: Math.floor(Date.now()/1000), nanoseconds: 0 }
+      }).catch(err => console.error('Job write failed:', err));
+    }
+
+    function onKeyCancel(ev) {
+      if (ev.key === 'Escape') {
+        map.off('click', onMapClick);
+        document.removeEventListener('keydown', onKeyCancel);
+        document.getElementById('map').classList.remove('pin-drop-mode');
+        banner.style.display = 'none';
+        pendingJobName = null;
+      }
+    }
+
+    map.on('click', onMapClick);
+    document.addEventListener('keydown', onKeyCancel);
+  }, 400);
 });
 
 document.getElementById('btn-manage-jobs').addEventListener('click', () => {
