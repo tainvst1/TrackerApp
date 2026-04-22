@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>FieldTrack</title>
+<title>TeamTrack</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Barlow:wght@400;600;700&display=swap" rel="stylesheet">
 <style>
@@ -14,8 +14,8 @@
     --accent: #00ff88;
     --accent2: #00bfff;
     --warn: #ff6b35;
-    --text: #cdd6e0;
-    --muted: #4a5568;
+    --text: #f0f4f8;
+    --muted: #8fa3b8;
     --mono: 'Share Tech Mono', monospace;
     --sans: 'Barlow', sans-serif;
   }
@@ -357,7 +357,7 @@
 <!-- HEADER -->
 <div id="header">
   <div class="header-left">
-    <div class="logo">/// FIELDTRACK</div>
+    <div class="logo">/// TEAM TRACK</div>
     <div class="user-badge" id="my-name-badge">---</div>
   </div>
   <div class="header-right">
@@ -610,51 +610,63 @@ function startListener() {
 }
 
 // ── GPS POLL ────────────────────────────────────────────
+async function writePosition(lat, lng, accuracy) {
+  const moved = lastPos ? haversineMeters(lastPos.lat, lastPos.lng, lat, lng) : Infinity;
+  const { doc, setDoc } = window.__firebaseFns;
+  const userDoc = doc(db, 'users', myUid);
+  if (moved > MOVE_THRESHOLD) {
+    await setDoc(userDoc, {
+      name: myName, lat, lng,
+      accuracy: Math.round(accuracy),
+      updatedAt: { seconds: Math.floor(Date.now()/1000), nanoseconds: 0 }
+    }, { merge: true });
+    lastPos = { lat, lng };
+    setStatus('Updated x00B7 +/-' + Math.round(accuracy) + 'm', 'active');
+  } else {
+    await setDoc(userDoc, {
+      name: myName,
+      updatedAt: { seconds: Math.floor(Date.now()/1000), nanoseconds: 0 }
+    }, { merge: true });
+    setStatus('Stationary x00B7 ' + Math.round(moved) + 'm drift', 'active');
+  }
+}
+
 async function pollGPS() {
   setStatus('Acquiring GPS...', 'polling');
   document.getElementById('next-poll').textContent = 'POLLING...';
 
   return new Promise((resolve) => {
+    let resolved = false;
+
+    // Fast network-based fix (gets something on map quickly)
     navigator.geolocation.getCurrentPosition(
       async (pos) => {
-        const { latitude: lat, longitude: lng, accuracy } = pos.coords;
+        if (resolved) return;
+        resolved = true;
+        await writePosition(pos.coords.latitude, pos.coords.longitude, pos.coords.accuracy);
+        startCountdown();
+        resolve();
+      },
+      () => {},
+      { enableHighAccuracy: false, timeout: 8000, maximumAge: 60000 }
+    );
 
-        // Check movement
-        const moved = lastPos
-          ? haversineMeters(lastPos.lat, lastPos.lng, lat, lng)
-          : Infinity;
-
-        const { doc, setDoc } = window.__firebaseFns;
-        const userDoc = doc(db, 'users', myUid);
-
-        if (moved > MOVE_THRESHOLD) {
-          // Full update
-          await setDoc(userDoc, {
-            name: myName,
-            lat, lng,
-            accuracy: Math.round(accuracy),
-            updatedAt: { seconds: Math.floor(Date.now()/1000), nanoseconds: 0 }
-          }, { merge: true });
-          lastPos = { lat, lng };
-          setStatus(`Updated · ±${Math.round(accuracy)}m`, 'active');
-        } else {
-          // Heartbeat only
-          await setDoc(userDoc, {
-            name: myName,
-            updatedAt: { seconds: Math.floor(Date.now()/1000), nanoseconds: 0 }
-          }, { merge: true });
-          setStatus(`Stationary · ${Math.round(moved)}m drift`, 'active');
-        }
-
+    // High accuracy in parallel
+    navigator.geolocation.getCurrentPosition(
+      async (pos) => {
+        resolved = true;
+        await writePosition(pos.coords.latitude, pos.coords.longitude, pos.coords.accuracy);
         startCountdown();
         resolve();
       },
       (err) => {
-        setStatus(`GPS error: ${err.message}`, 'idle');
-        startCountdown();
-        resolve();
+        if (!resolved) {
+          setStatus('GPS error: ' + err.message, 'idle');
+          startCountdown();
+          resolve();
+        }
       },
-      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+      { enableHighAccuracy: true, timeout: 30000, maximumAge: 30000 }
     );
   });
 }
