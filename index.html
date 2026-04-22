@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>TeamTrack</title>
+<title>Team Track</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Barlow:wght@400;600;700&display=swap" rel="stylesheet">
 <style>
@@ -345,11 +345,12 @@
 <!-- LOGIN -->
 <div id="login-screen">
   <div class="login-box">
-    <div class="login-logo">/// FIELDTRACK</div>
-    <div class="login-sub">Tactical Position System</div>
-    <label class="login-label">Call Sign / Name</label>
+    <div class="login-logo">/// TEAM TRACK</div>
+    <div class="login-sub">Team Position System</div>
+    <label class="login-label">Your Name</label>
     <input class="login-input" id="name-input" type="text" placeholder="Enter your name" maxlength="20" autocomplete="off"/>
-    <button class="login-btn" id="join-btn">ENTER GRID</button>
+    <div id="name-confirm" style="display:none;font-family:var(--mono);font-size:0.8rem;color:var(--accent);margin-bottom:1rem;padding:0.5rem 0.75rem;background:var(--bg);border:1px solid var(--accent);">You'll appear as: <span id="name-preview"></span></div>
+    <button class="login-btn" id="join-btn">JOIN TEAM</button>
     <div class="login-error" id="login-error"></div>
   </div>
 </div>
@@ -677,6 +678,19 @@ function schedulePoll() {
   });
 }
 
+// ── NAME PREVIEW ─────────────────────────────────────────
+document.getElementById('name-input').addEventListener('input', () => {
+  const val = document.getElementById('name-input').value.trim();
+  const confirm = document.getElementById('name-confirm');
+  const preview = document.getElementById('name-preview');
+  if (val.length >= 2) {
+    preview.textContent = val.toUpperCase();
+    confirm.style.display = 'block';
+  } else {
+    confirm.style.display = 'none';
+  }
+});
+
 // ── FIREBASE INIT ───────────────────────────────────────
 async function initFirebase(name) {
   const { initializeApp } = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js");
@@ -739,7 +753,7 @@ document.getElementById('join-btn').addEventListener('click', async () => {
     map.invalidateSize();
   } catch(e) {
     document.getElementById('login-error').textContent = 'Connection failed. Check Firebase config.';
-    document.getElementById('join-btn').textContent = 'ENTER GRID';
+    document.getElementById('join-btn').textContent = 'JOIN TEAM';
     document.getElementById('join-btn').disabled = false;
   }
 });
