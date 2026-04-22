@@ -165,6 +165,11 @@
 </div>
 
 <!-- HEADER -->
+<!-- UPDATE BANNER -->
+<div id="update-banner" style="display:none;background:var(--warn);color:#000;font-family:var(--mono);font-size:0.78rem;letter-spacing:0.08em;text-align:center;padding:0.55rem 1rem;cursor:pointer;z-index:9998;flex-shrink:0;">
+  UPDATE AVAILABLE — TAP TO REFRESH
+</div>
+
 <div id="header">
   <div class="header-left">
     <div class="logo">/// TEAM TRACK</div>
@@ -277,6 +282,7 @@ const firebaseConfig = {
   appId: "1:161479517826:web:293f909d8f24a59451769b"
 };
 
+const APP_VERSION    = '0.5';
 const MAP_CENTER     = [29.935773, 34.952498];
 const MAP_ZOOM       = 15;
 const POLL_INTERVAL  = 2 * 60 * 1000;
@@ -779,6 +785,23 @@ function startListeners() {
   });
 }
 
+// ── VERSION CHECK ────────────────────────────────────────
+function checkVersion() {
+  try {
+    onSnapshot(doc(db, 'config', 'app'), (snap) => {
+      if (!snap.exists()) return;
+      const remoteVersion = snap.data().version;
+      if (remoteVersion && remoteVersion !== APP_VERSION) {
+        const banner = document.getElementById('update-banner');
+        banner.style.display = 'block';
+        banner.onclick = () => window.location.reload(true);
+      }
+    });
+  } catch(e) {
+    console.warn('Version check failed:', e);
+  }
+}
+
 // ── SEARCHABLE DROPDOWN ───────────────────────────────────
 let selectedRosterEntry = null;
 
@@ -852,6 +875,7 @@ document.getElementById('join-btn').addEventListener('click', async () => {
     }
 
     startListeners();
+    checkVersion();
     document.getElementById('login-screen').classList.add('hidden');
 
     if (myEntry.role === 'viewer') {
