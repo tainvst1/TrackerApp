@@ -307,6 +307,7 @@ let allUsers = {};
 let allJobs = {};
 let jobPinMarkers = {};
 let activeFilter = 'all';
+let jobStatusFilter = 'active'; // 'active', 'closed', 'all'
 let pendingJobName = null;
 let selectedJobId = null;
 let myCurrentJob = null;
@@ -353,15 +354,46 @@ function startCountdown() {
 function renderJobFilterBar() {
   const bar = document.getElementById('job-filter-bar');
   bar.innerHTML = '';
-  const allBtn = document.createElement('button');
-  allBtn.className = 'job-filter-btn' + (activeFilter==='all'?' active':'');
-  allBtn.textContent = 'All';
-  allBtn.addEventListener('click', () => { activeFilter='all'; renderJobFilterBar(); renderUserList(); renderMarkers(); });
-  bar.appendChild(allBtn);
-  Object.entries(allJobs).forEach(([jid, job]) => {
+
+  // Status toggles
+  ['active','closed','all'].forEach(status => {
+    const btn = document.createElement('button');
+    btn.className = 'job-filter-btn' + (jobStatusFilter===status?' active':'');
+    btn.style.cssText = 'border-color:' + (status==='closed' ? 'var(--warn)' : status==='all' ? 'var(--muted)' : 'var(--accent)') + ';';
+    if (jobStatusFilter===status) btn.style.cssText += 'background:' + (status==='closed' ? 'var(--warn)' : status==='all' ? 'var(--muted)' : 'var(--accent)') + ';color:#000;';
+    btn.textContent = status.toUpperCase();
+    btn.addEventListener('click', () => {
+      jobStatusFilter = status;
+      activeFilter = 'all';
+      renderJobFilterBar(); renderUserList(); renderMarkers(); renderJobPins();
+    });
+    bar.appendChild(btn);
+  });
+
+  // Divider
+  const div = document.createElement('div');
+  div.style.cssText = 'width:1px;background:var(--border);flex-shrink:0;margin:0.1rem 0.2rem;';
+  bar.appendChild(div);
+
+  // Job buttons filtered by status
+  const visibleJobs = Object.entries(allJobs).filter(([,job]) => {
+    if (jobStatusFilter === 'active') return !job.closed;
+    if (jobStatusFilter === 'closed') return !!job.closed;
+    return true;
+  });
+
+  if (visibleJobs.length === 0) {
+    const empty = document.createElement('span');
+    empty.style.cssText = 'font-family:var(--mono);font-size:0.65rem;color:var(--muted);padding:0.25rem 0.4rem;white-space:nowrap;';
+    empty.textContent = 'No ' + jobStatusFilter + ' jobs';
+    bar.appendChild(empty);
+  }
+
+  visibleJobs.forEach(([jid, job]) => {
     const btn = document.createElement('button');
     btn.className = 'job-filter-btn' + (activeFilter===jid?' active':'');
-    btn.textContent = job.name;
+    btn.textContent = job.name + (job.closed ? ' ✓' : '');
+    btn.style.opacity = job.closed ? '0.7' : '1';
     btn.addEventListener('click', () => {
       activeFilter=jid; renderJobFilterBar(); renderUserList(); renderMarkers();
       if (job.lat && job.lng) map.setView([job.lat, job.lng], 16, { animate: true });
@@ -376,8 +408,12 @@ function renderJobPins() {
   jobPinMarkers = {};
   Object.entries(allJobs).forEach(([jid, job]) => {
     if (!job.lat || !job.lng) return;
+    // Hide pins not matching current status filter
+    if (jobStatusFilter === 'active' && job.closed) return;
+    if (jobStatusFilter === 'closed' && !job.closed) return;
+    const pinColor = job.closed ? '#888' : 'var(--admin)';
     const icon = L.divIcon({
-      html: `<div class="job-pin-marker"><div class="job-pin-icon"></div><div class="job-pin-label">${job.name}</div></div>`,
+      html: `<div class="job-pin-marker" style="opacity:${job.closed?'0.55':'1'}"><div class="job-pin-icon" style="background:${pinColor}"></div><div class="job-pin-label" style="color:${pinColor};border-color:${job.closed?'rgba(136,136,136,0.3)':'rgba(255,215,0,0.3)'};">${job.name}${job.closed?' [CLOSED]':''}</div></div>`,
       className: '', iconAnchor: [5,5], popupAnchor: [0,-10]
     });
     const m = L.marker([job.lat, job.lng], { icon, zIndexOffset: -100 }).addTo(map);
@@ -394,7 +430,8 @@ function openNotesModal(jid) {
   if (!job) return;
   currentNotesJobId = jid;
 
-  document.getElementById('notes-modal-title').textContent = job.name + ' — Notes';
+  const closedTag = job.closed ? ' <span style="color:var(--warn);font-size:0.7rem;">[CLOSED]</span>' : '';
+  document.getElementById('notes-modal-title').innerHTML = job.name + closedTag;
 
   const ts = job.notesUpdatedAt ? new Date(job.notesUpdatedAt * 1000).toLocaleString() : '—';
   document.getElementById('notes-last-updated').textContent = ts;
@@ -402,17 +439,26 @@ function openNotesModal(jid) {
   const textarea = document.getElementById('notes-textarea');
   textarea.value = job.notes || '';
 
-  // Can edit if assigned to this job OR is admin/viewer
-  const canEdit = myEntry && (
+  // Closed jobs: only admin/viewer can edit; active jobs: assigned users + admin/viewer
+  const canEdit = myEntry && !job.closed && (
     myEntry.role === 'admin' ||
     myEntry.role === 'viewer' ||
     myCurrentJob === jid
   );
 
-  textarea.readOnly = !canEdit;
-  textarea.style.opacity = canEdit ? '1' : '0.6';
-  document.getElementById('notes-save').style.display = canEdit ? 'block' : 'none';
-  document.getElementById('notes-readonly-msg').style.display = canEdit ? 'none' : 'block';
+  // Admin/viewer can always edit even closed jobs
+  const canEditClosed = myEntry && job.closed && (myEntry.role === 'admin' || myEntry.role === 'viewer');
+  const actuallyCanEdit = canEdit || canEditClosed;
+
+  textarea.readOnly = !actuallyCanEdit;
+  textarea.style.opacity = actuallyCanEdit ? '1' : '0.6';
+  document.getElementById('notes-save').style.display = actuallyCanEdit ? 'block' : 'none';
+  document.getElementById('notes-readonly-msg').style.display = actuallyCanEdit ? 'none' : 'block';
+  if (job.closed && !actuallyCanEdit) {
+    document.getElementById('notes-readonly-msg').textContent = 'This job is closed.';
+  } else if (!actuallyCanEdit) {
+    document.getElementById('notes-readonly-msg').textContent = 'You must be assigned to this job to edit notes.';
+  }
 
   document.getElementById('notes-modal').classList.add('open');
 }
@@ -642,15 +688,23 @@ document.getElementById('manage-jobs-close').addEventListener('click', () => {
 function renderManageJobsList() {
   const list = document.getElementById('manage-jobs-list');
   list.innerHTML = '';
-  const jobs = Object.entries(allJobs);
+  const jobs = Object.entries(allJobs).sort((a,b) => (a[1].closed?1:0)-(b[1].closed?1:0));
   if (!jobs.length) { list.innerHTML = '<div class="job-select-none">No jobs created yet.</div>'; return; }
   jobs.forEach(([jid, job]) => {
     const item = document.createElement('div');
     item.className = 'job-select-item';
-    item.innerHTML = `<span>${job.name}</span><button style="font-family:var(--mono);font-size:0.65rem;background:transparent;border:1px solid var(--warn);color:var(--warn);padding:0.2rem 0.5rem;cursor:pointer;">CLOSE JOB</button>`;
+    const isClosed = !!job.closed;
+    const btnLabel = isClosed ? 'REOPEN' : 'CLOSE';
+    const btnStyle = isClosed
+      ? 'font-family:var(--mono);font-size:0.65rem;background:transparent;border:1px solid var(--accent);color:var(--accent);padding:0.2rem 0.5rem;cursor:pointer;'
+      : 'font-family:var(--mono);font-size:0.65rem;background:transparent;border:1px solid var(--warn);color:var(--warn);padding:0.2rem 0.5rem;cursor:pointer;';
+    item.innerHTML = `<span style="opacity:${isClosed?'0.6':'1'}">${job.name}${isClosed?' <span style="color:var(--muted);font-size:0.6rem;">[CLOSED]</span>':''}</span><button style="${btnStyle}">${btnLabel}</button>`;
     item.querySelector('button').addEventListener('click', async (e) => {
       e.stopPropagation();
-      await deleteDoc(doc(db,'jobs',jid));
+      await setDoc(doc(db,'jobs',jid), {
+        closed: !isClosed,
+        closedAt: !isClosed ? Math.floor(Date.now()/1000) : null
+      }, {merge:true});
       renderManageJobsList();
     });
     list.appendChild(item);
@@ -662,7 +716,7 @@ function openJobSelectModal() {
   const list = document.getElementById('job-select-list');
   list.innerHTML = '';
   selectedJobId = myCurrentJob;
-  const jobs = Object.entries(allJobs);
+  const jobs = Object.entries(allJobs).filter(([,job]) => !job.closed);
   if (!jobs.length) {
     list.innerHTML = '<div class="job-select-none">No active jobs. Ask an admin to create one.</div>';
   } else {
