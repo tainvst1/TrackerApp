@@ -85,7 +85,7 @@
   #map.pin-drop-mode { cursor: crosshair !important; }
 
   /* PIN DROP BANNER */
-  #pin-drop-banner { display: none; position: absolute; top: 0; left: 0; right: 0; background: rgba(255,215,0,0.92); color: #000; font-family: var(--mono); font-size: 0.78rem; letter-spacing: 0.08em; text-align: center; padding: 0.6rem; z-index: 500; pointer-events: none; }
+  #pin-drop-banner { display: none; position: absolute; top: 0; left: 0; right: 0; background: rgba(255,215,0,0.95); color: #000; font-family: var(--mono); font-size: 0.78rem; letter-spacing: 0.08em; text-align: center; padding: 0.6rem; z-index: 500; pointer-events: all; align-items: center; justify-content: center; gap: 0.5rem; flex-wrap: wrap; }
   #pin-drop-banner.visible { display: block; }
 
   /* MARKERS */
@@ -198,7 +198,10 @@
 
 <!-- MAP -->
 <div id="map-wrap">
-  <div id="pin-drop-banner"></div>
+  <div id="pin-drop-banner">
+  <span id="pin-drop-text"></span>
+  <button id="pin-cancel-btn" style="margin-left:1rem;font-family:var(--mono);font-size:0.7rem;background:rgba(0,0,0,0.3);border:1px solid rgba(0,0,0,0.5);color:#000;padding:0.2rem 0.6rem;cursor:pointer;letter-spacing:0.08em;">CANCEL</button>
+</div>
   <div id="map"></div>
 </div>
 
@@ -484,44 +487,75 @@ document.getElementById('create-job-confirm').addEventListener('click', () => {
   pendingJobName = name;
   document.getElementById('create-job-modal').classList.remove('open');
   const banner = document.getElementById('pin-drop-banner');
-  banner.textContent = 'TAP MAP TO PLACE PIN FOR: "' + name.toUpperCase() + '"';
-  banner.style.display = 'block';
+  document.getElementById('pin-drop-text').textContent = 'TAP MAP TO PLACE "' + name.toUpperCase() + '"';
+  banner.style.display = 'flex';
+  document.getElementById('map').classList.add('pin-drop-mode');
 
-  // Delay so modal close click doesn't immediately fire the map handler
-  setTimeout(() => {
-    document.getElementById('map').classList.add('pin-drop-mode');
+  let pinDropActive = true;
 
-    function onMapClick(e) {
-      map.off('click', onMapClick);
-      document.removeEventListener('keydown', onKeyCancel);
-      document.getElementById('map').classList.remove('pin-drop-mode');
-      banner.style.display = 'none';
-      if (!pendingJobName) return;
-      const jid = 'job-' + Date.now();
-      const jobName = pendingJobName;
-      pendingJobName = null;
-      setDoc(doc(db, 'jobs', jid), {
-        name: jobName,
-        lat: e.latlng.lat,
-        lng: e.latlng.lng,
+  function cancelPinDrop() {
+    if (!pinDropActive) return;
+    pinDropActive = false;
+    map.off('click', onMapClick);
+    map.off('touchend', onMapTouch);
+    document.removeEventListener('keydown', onKeyCancel);
+    document.getElementById('map').classList.remove('pin-drop-mode');
+    banner.style.display = 'none';
+    pendingJobName = null;
+  }
+
+  async function placePin(lat, lng) {
+    if (!pinDropActive || !pendingJobName) return;
+    pinDropActive = false;
+    map.off('click', onMapClick);
+    map.off('touchend', onMapTouch);
+    document.removeEventListener('keydown', onKeyCancel);
+    document.getElementById('map').classList.remove('pin-drop-mode');
+    banner.style.display = 'none';
+    const jid = 'job-' + Date.now();
+    const jobName = pendingJobName;
+    pendingJobName = null;
+    try {
+      await setDoc(doc(db, 'jobs', jid), {
+        name: jobName, lat, lng,
         createdBy: myEntry.name,
         createdAt: { seconds: Math.floor(Date.now()/1000), nanoseconds: 0 }
-      }).catch(err => console.error('Job write failed:', err));
+      });
+    } catch(err) {
+      console.error('Job write failed:', err);
+      alert('Failed to save job. Check your connection.');
     }
+  }
 
-    function onKeyCancel(ev) {
-      if (ev.key === 'Escape') {
-        map.off('click', onMapClick);
-        document.removeEventListener('keydown', onKeyCancel);
-        document.getElementById('map').classList.remove('pin-drop-mode');
-        banner.style.display = 'none';
-        pendingJobName = null;
-      }
-    }
+  function onMapClick(e) {
+    // Small delay to avoid ghost clicks from modal close on desktop
+    setTimeout(() => placePin(e.latlng.lat, e.latlng.lng), 50);
+  }
 
+  function onMapTouch(e) {
+    if (!e.touches || e.touches.length === 0) return;
+    const touch = e.changedTouches[0];
+    const point = map.containerPointToLatLng(
+      L.point(touch.clientX - map.getContainer().getBoundingClientRect().left,
+              touch.clientY - map.getContainer().getBoundingClientRect().top)
+    );
+    placePin(point.lat, point.lng);
+  }
+
+  function onKeyCancel(ev) {
+    if (ev.key === 'Escape') cancelPinDrop();
+  }
+
+  // Use a delay so the modal confirm button click doesn't immediately place a pin
+  setTimeout(() => {
     map.on('click', onMapClick);
+    document.getElementById('map').getContainer
+      ? map.getContainer().addEventListener('touchend', onMapTouch, { passive: true })
+      : null;
     document.addEventListener('keydown', onKeyCancel);
-  }, 400);
+  }, 300);
+
+  document.getElementById('pin-cancel-btn').onclick = cancelPinDrop;
 });
 
 document.getElementById('btn-manage-jobs').addEventListener('click', () => {
