@@ -223,6 +223,20 @@
   </div>
 </div>
 
+<!-- NOTES MODAL -->
+<div class="modal-overlay" id="notes-modal">
+  <div class="modal-box" style="border-top-color:var(--admin);">
+    <div class="modal-title" id="notes-modal-title">Job Notes</div>
+    <div style="font-family:var(--mono);font-size:0.7rem;color:var(--muted);margin-bottom:0.5rem;">Last updated: <span id="notes-last-updated">—</span></div>
+    <textarea id="notes-textarea" style="width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);font-family:var(--mono);font-size:0.85rem;padding:0.65rem 0.75rem;outline:none;resize:vertical;min-height:120px;line-height:1.5;" placeholder="No notes yet..."></textarea>
+    <div id="notes-readonly-msg" style="display:none;font-family:var(--mono);font-size:0.7rem;color:var(--muted);margin-top:0.5rem;">You must be assigned to this job to edit notes.</div>
+    <div class="modal-btns" style="margin-top:1rem;">
+      <button class="modal-btn cancel" id="notes-close">Close</button>
+      <button class="modal-btn confirm" id="notes-save" style="display:none;">Save Notes</button>
+    </div>
+  </div>
+</div>
+
 <!-- MANAGE JOBS MODAL -->
 <div class="modal-overlay" id="manage-jobs-modal">
   <div class="modal-box">
@@ -367,9 +381,67 @@ function renderJobPins() {
       className: '', iconAnchor: [5,5], popupAnchor: [0,-10]
     });
     const m = L.marker([job.lat, job.lng], { icon, zIndexOffset: -100 }).addTo(map);
+    m.on('click', () => openNotesModal(jid));
     jobPinMarkers[jid] = m;
   });
 }
+
+// ── NOTES MODAL ───────────────────────────────────────────
+let currentNotesJobId = null;
+
+function openNotesModal(jid) {
+  const job = allJobs[jid];
+  if (!job) return;
+  currentNotesJobId = jid;
+
+  document.getElementById('notes-modal-title').textContent = job.name + ' — Notes';
+
+  const ts = job.notesUpdatedAt ? new Date(job.notesUpdatedAt * 1000).toLocaleString() : '—';
+  document.getElementById('notes-last-updated').textContent = ts;
+
+  const textarea = document.getElementById('notes-textarea');
+  textarea.value = job.notes || '';
+
+  // Can edit if assigned to this job OR is admin/viewer
+  const canEdit = myEntry && (
+    myEntry.role === 'admin' ||
+    myEntry.role === 'viewer' ||
+    myCurrentJob === jid
+  );
+
+  textarea.readOnly = !canEdit;
+  textarea.style.opacity = canEdit ? '1' : '0.6';
+  document.getElementById('notes-save').style.display = canEdit ? 'block' : 'none';
+  document.getElementById('notes-readonly-msg').style.display = canEdit ? 'none' : 'block';
+
+  document.getElementById('notes-modal').classList.add('open');
+}
+
+document.getElementById('notes-close').addEventListener('click', () => {
+  document.getElementById('notes-modal').classList.remove('open');
+  currentNotesJobId = null;
+});
+
+document.getElementById('notes-save').addEventListener('click', async () => {
+  if (!currentNotesJobId) return;
+  const notes = document.getElementById('notes-textarea').value.trim();
+  const saveBtn = document.getElementById('notes-save');
+  saveBtn.textContent = 'Saving...';
+  saveBtn.disabled = true;
+  try {
+    await setDoc(doc(db, 'jobs', currentNotesJobId), {
+      notes: notes,
+      notesUpdatedBy: myEntry.name,
+      notesUpdatedAt: Math.floor(Date.now() / 1000)
+    }, { merge: true });
+    document.getElementById('notes-modal').classList.remove('open');
+    currentNotesJobId = null;
+  } catch(e) {
+    alert('Failed to save notes. Check your connection.');
+  }
+  saveBtn.textContent = 'Save Notes';
+  saveBtn.disabled = false;
+});
 
 // ── USER MARKERS ─────────────────────────────────────────
 function createUserIcon(name, color, stale, jobName) {
