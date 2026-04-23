@@ -286,12 +286,12 @@ const firebaseConfig = {
   appId: "1:161479517826:web:293f909d8f24a59451769b"
 };
 
-const APP_VERSION    = '1.8';
+const APP_VERSION    = '1.9';
 const MAP_CENTER     = [29.935773, 34.952498];
 const MAP_ZOOM       = 15;
 const POLL_INTERVAL  = 2 * 60 * 1000;
 const MOVE_THRESHOLD = 20;
-const STALE_AFTER    = 10 * 60 * 1000;
+const STALE_AFTER    = 15 * 60 * 1000; // 15 min — heartbeat runs every 5 min so this is safe
 
 // ── ROSTER ───────────────────────────────────────────────
 // uid is fixed per name so same name = same Firestore doc always
@@ -671,6 +671,24 @@ function schedulePoll() {
   pollGPS().then(()=>{ pollTimer = setTimeout(schedulePoll, POLL_INTERVAL); });
 }
 
+// ── HEARTBEAT ─────────────────────────────────────────────
+// Keeps timestamp fresh so user shows as online even in manual mode
+// or when GPS accuracy is poor. Runs every 5 minutes.
+function startHeartbeat() {
+  setInterval(async () => {
+    if (!myEntry || myEntry.role === 'viewer') return;
+    try {
+      await setDoc(doc(db, 'users', myEntry.uid), {
+        name: myEntry.name,
+        online: true,
+        updatedAt: { seconds: Math.floor(Date.now()/1000), nanoseconds: 0 }
+      }, { merge: true });
+    } catch(e) {
+      console.warn('Heartbeat failed:', e);
+    }
+  }, 5 * 60 * 1000);
+}
+
 // ── JOB MANAGEMENT ───────────────────────────────────────
 document.getElementById('btn-create-job').addEventListener('click', () => {
   document.getElementById('new-job-name').value = '';
@@ -1032,6 +1050,7 @@ document.getElementById('join-btn').addEventListener('click', async () => {
 
     startListeners();
     checkVersion();
+    if (myEntry.role !== 'viewer') startHeartbeat();
     document.getElementById('login-screen').classList.add('hidden');
 
     if (myEntry.role === 'viewer') {
