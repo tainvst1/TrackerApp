@@ -285,7 +285,7 @@ const firebaseConfig = {
   appId: "1:161479517826:web:293f909d8f24a59451769b"
 };
 
-const APP_VERSION    = '0.8';
+const APP_VERSION    = '0.9';
 const MAP_CENTER     = [29.935773, 34.952498];
 const MAP_ZOOM       = 15;
 const POLL_INTERVAL  = 2 * 60 * 1000;
@@ -858,10 +858,7 @@ function renderDropdown(filter) {
   filtered.forEach(entry => {
     const item = document.createElement('div');
     item.className = 'dropdown-item';
-    let badge = '';
-    if (entry.role==='admin') badge = '<span class="role-badge role-admin">Admin</span>';
-    if (entry.role==='viewer') badge = '<span class="role-badge role-viewer">Viewer</span>';
-    item.innerHTML = `<span>${entry.name}</span>${badge}`;
+    item.innerHTML = `<span>${entry.name}</span>`;
     item.addEventListener('click', () => {
       selectedRosterEntry = entry;
       document.getElementById('name-search').value = entry.name;
