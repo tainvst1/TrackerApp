@@ -574,8 +574,13 @@ function setManualMode(isManual) {
   const placeMeBtn = document.getElementById('place-me-btn');
   const useGpsBtn = document.getElementById('use-gps-btn');
   if (placeMeBtn && useGpsBtn) {
-    placeMeBtn.style.display = isManual ? 'none' : '';
-    useGpsBtn.style.display = isManual ? '' : 'none';
+    if (isManual) {
+      placeMeBtn.classList.add('hidden');
+      useGpsBtn.classList.remove('hidden');
+    } else {
+      placeMeBtn.classList.remove('hidden');
+      useGpsBtn.classList.add('hidden');
+    }
   }
 }
 
