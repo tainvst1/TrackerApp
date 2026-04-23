@@ -179,6 +179,7 @@
   <div class="header-right">
     <button id="my-job-btn" class="hidden">SET JOB</button>
     <button id="place-me-btn" class="hidden" style="font-family:var(--mono);font-size:0.65rem;letter-spacing:0.08em;text-transform:uppercase;padding:0.25rem 0.6rem;border:1px solid var(--accent2);background:transparent;color:var(--accent2);cursor:pointer;">PLACE ME</button>
+    <button id="use-gps-btn" class="hidden" style="font-family:var(--mono);font-size:0.65rem;letter-spacing:0.08em;text-transform:uppercase;padding:0.25rem 0.6rem;border:1px solid var(--accent);background:transparent;color:var(--accent);cursor:pointer;">USE GPS</button>
     <div class="active-count" id="active-count">0 ONLINE</div>
   </div>
 </div>
@@ -284,7 +285,7 @@ const firebaseConfig = {
   appId: "1:161479517826:web:293f909d8f24a59451769b"
 };
 
-const APP_VERSION    = '0.71';
+const APP_VERSION    = '0.8';
 const MAP_CENTER     = [29.935773, 34.952498];
 const MAP_ZOOM       = 15;
 const POLL_INTERVAL  = 2 * 60 * 1000;
@@ -324,6 +325,8 @@ let jobStatusFilter = 'active'; // 'active', 'closed', 'all'
 let pendingJobName = null;
 let selectedJobId = null;
 let myCurrentJob = null;
+let isManualPosition = false;
+const GPS_ACCURACY_THRESHOLD = 30; // metres
 
 // ── MAP ──────────────────────────────────────────────────
 const map = L.map('map', { center: MAP_CENTER, zoom: MAP_ZOOM, zoomControl: true, attributionControl: false });
@@ -566,10 +569,33 @@ function renderUserList() {
 setInterval(() => { renderUserList(); renderMarkers(); }, 30000);
 
 // ── GPS ──────────────────────────────────────────────────
+function setManualMode(isManual) {
+  isManualPosition = isManual;
+  const placeMeBtn = document.getElementById('place-me-btn');
+  const useGpsBtn = document.getElementById('use-gps-btn');
+  if (placeMeBtn && useGpsBtn) {
+    placeMeBtn.style.display = isManual ? 'none' : '';
+    useGpsBtn.style.display = isManual ? '' : 'none';
+  }
+}
+
 async function writePosition(lat, lng, accuracy) {
-  const moved = lastPos ? haversineMeters(lastPos.lat,lastPos.lng,lat,lng) : Infinity;
   const userDoc = doc(db,'users',myEntry.uid);
   const base = { name: myEntry.name, jobId: myCurrentJob||null, updatedAt: { seconds: Math.floor(Date.now()/1000), nanoseconds: 0 } };
+
+  // If manual position set, only override if GPS accuracy is good enough
+  if (isManualPosition) {
+    if (accuracy > GPS_ACCURACY_THRESHOLD) {
+      setStatus(`Manual pos kept \u00B7 GPS \u00B1${Math.round(accuracy)}m`, 'active');
+      startCountdown();
+      return;
+    }
+    // Good GPS fix — auto-resume
+    setManualMode(false);
+    setStatus(`GPS resumed \u00B7 \u00B1${Math.round(accuracy)}m`, 'active');
+  }
+
+  const moved = lastPos ? haversineMeters(lastPos.lat,lastPos.lng,lat,lng) : Infinity;
   if (moved > MOVE_THRESHOLD) {
     await setDoc(userDoc, {...base, lat, lng, accuracy: Math.round(accuracy), manual: false}, {merge:true});
     lastPos = {lat,lng};
@@ -776,8 +802,12 @@ function startListeners() {
       const uid = change.doc.id;
       if (change.type==='removed') { if(markers[uid]){map.removeLayer(markers[uid]);delete markers[uid];} delete allUsers[uid]; return; }
       const data = change.doc.data();
-      if (!data.lat||!data.lng) return;
       data.ts = data.updatedAt?.seconds ? data.updatedAt.seconds*1000 : Date.now();
+      if (!data.lat || !data.lng) {
+        // No position yet — store but don't render marker
+        allUsers[uid] = data;
+        return;
+      }
       allUsers[uid] = data;
     });
     renderMarkers(); renderUserList();
@@ -921,6 +951,7 @@ document.getElementById('join-btn').addEventListener('click', async () => {
             jobId: myCurrentJob || null,
             updatedAt: { seconds: Math.floor(Date.now()/1000), nanoseconds: 0 }
           }, { merge: true }).catch(err => console.error('Place me failed:', err));
+          setManualMode(true);
           setStatus('Manual position set', 'active');
         }
 
@@ -936,6 +967,21 @@ document.getElementById('join-btn').addEventListener('click', async () => {
           map.on('click', onPlaceMeClick);
           document.addEventListener('keydown', onKeyCancel, { once: true });
         }, 500);
+      });
+
+      // USE GPS button — force resume GPS
+      const useGpsBtn = document.getElementById('use-gps-btn');
+      useGpsBtn.addEventListener('click', async () => {
+        setManualMode(false);
+        // Clear manual flag in Firestore
+        await setDoc(doc(db, 'users', myEntry.uid), {
+          manual: false,
+          updatedAt: { seconds: Math.floor(Date.now()/1000), nanoseconds: 0 }
+        }, { merge: true });
+        // Immediately trigger a GPS poll
+        clearTimeout(pollTimer);
+        clearInterval(countdownTimer);
+        pollGPS().then(() => { pollTimer = setTimeout(schedulePoll, POLL_INTERVAL); });
       });
     }
 
