@@ -16,7 +16,7 @@
     --warn: #ff6b35;
     --admin: #ffd700;
     --text: #f0f4f8;
-    --muted: #8fa3b8;
+    --muted: #b8cfe0;
     --mono: 'Share Tech Mono', monospace;
     --sans: 'Barlow', sans-serif;
   }
@@ -49,7 +49,7 @@
   #header { background: var(--panel); border-bottom: 1px solid var(--border); padding: 0.6rem 1rem; display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; z-index: 100; }
   .header-left { display: flex; align-items: center; gap: 0.75rem; }
   .logo { font-family: var(--mono); font-size: 0.9rem; color: var(--accent); letter-spacing: 0.2em; }
-  .user-badge { font-family: var(--mono); font-size: 0.7rem; color: var(--muted); background: var(--bg); border: 1px solid var(--border); padding: 0.2rem 0.6rem; letter-spacing: 0.1em; }
+  .user-badge { font-family: var(--mono); font-size: 0.7rem; color: var(--text); background: var(--bg); border: 1px solid var(--border); padding: 0.2rem 0.6rem; letter-spacing: 0.1em; }
   .user-badge.is-admin { color: var(--admin); border-color: var(--admin); }
   .user-badge.is-viewer { color: var(--accent2); border-color: var(--accent2); }
   .header-right { display: flex; align-items: center; gap: 0.5rem; }
@@ -236,6 +236,7 @@
   <div class="modal-box" style="border-top-color:var(--admin);">
     <div class="modal-title" id="notes-modal-title">Job Notes</div>
     <div style="font-family:var(--mono);font-size:0.7rem;color:var(--muted);margin-bottom:0.5rem;">Last updated: <span id="notes-last-updated">—</span></div>
+    <div id="job-assigned-list" style="margin-bottom:0.75rem;"></div>
     <textarea id="notes-textarea" style="width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);font-family:var(--mono);font-size:0.85rem;padding:0.65rem 0.75rem;outline:none;resize:vertical;min-height:120px;line-height:1.5;" placeholder="No notes yet..."></textarea>
     <div id="notes-readonly-msg" style="display:none;font-family:var(--mono);font-size:0.7rem;color:var(--muted);margin-top:0.5rem;">You must be assigned to this job to edit notes.</div>
     <div class="modal-btns" style="margin-top:1rem;">
@@ -285,7 +286,7 @@ const firebaseConfig = {
   appId: "1:161479517826:web:293f909d8f24a59451769b"
 };
 
-const APP_VERSION    = '1.0';
+const APP_VERSION    = '1.3';
 const MAP_CENTER     = [29.935773, 34.952498];
 const MAP_ZOOM       = 15;
 const POLL_INTERVAL  = 2 * 60 * 1000;
@@ -476,6 +477,19 @@ function openNotesModal(jid) {
     document.getElementById('notes-readonly-msg').textContent = 'You must be assigned to this job to edit notes.';
   }
 
+  // Build assigned users list
+  const assignedDiv = document.getElementById('job-assigned-list');
+  const assigned = Object.values(allUsers).filter(u => u.jobId === jid);
+  if (assigned.length > 0) {
+    assignedDiv.innerHTML = '<div style="font-family:var(--mono);font-size:0.65rem;color:var(--muted);letter-spacing:0.1em;text-transform:uppercase;margin-bottom:0.4rem;">Assigned</div>' +
+      assigned.map(u => {
+        const color = COLOR_MAP[Object.keys(allUsers).find(k => allUsers[k] === u)] || COLORS[0];
+        return `<div style="font-family:var(--mono);font-size:0.75rem;color:var(--text);display:flex;align-items:center;gap:0.4rem;margin-bottom:0.25rem;"><div style="width:8px;height:8px;border-radius:50%;background:${color};flex-shrink:0;"></div>${u.name}</div>`;
+      }).join('');
+  } else {
+    assignedDiv.innerHTML = '<div style="font-family:var(--mono);font-size:0.7rem;color:var(--muted);">No one assigned</div>';
+  }
+
   document.getElementById('notes-modal').classList.add('open');
 }
 
@@ -533,7 +547,20 @@ function renderMarkers() {
       m.on('click', () => {
         const job = data.jobId && allJobs[data.jobId] ? allJobs[data.jobId].name : 'Unassigned';
         const manualTag = data.manual ? '<div style="font-family:var(--mono);font-size:0.65rem;color:var(--accent2);margin-bottom:0.25rem;">Manual position</div>' : '';
-        m.bindPopup(`${manualTag}<div class="popup-name">${data.name}</div><div class="popup-job">Job: ${job}</div><div class="popup-time">Last seen: ${timeAgo(data.ts)}</div><div class="popup-coords">${data.lat.toFixed(5)}, ${data.lng.toFixed(5)}</div>`).openPopup();
+        // Build teammates list for same job
+        let teammatesHtml = '';
+        if (data.jobId) {
+          const teammates = Object.entries(allUsers)
+            .filter(([tid, td]) => tid !== uid && td.jobId === data.jobId)
+            .map(([tid, td]) => {
+              const tColor = COLOR_MAP[tid] || COLORS[0];
+              return `<div style="display:flex;align-items:center;gap:0.4rem;margin-bottom:0.2rem;"><div style="width:7px;height:7px;border-radius:50%;background:${tColor};flex-shrink:0;"></div><span>${td.name}</span></div>`;
+            });
+          if (teammates.length > 0) {
+            teammatesHtml = `<div style="font-family:var(--mono);font-size:0.65rem;color:var(--muted);letter-spacing:0.08em;text-transform:uppercase;margin-top:0.5rem;margin-bottom:0.3rem;">Also on job</div>${teammates.join('')}`;
+          }
+        }
+        m.bindPopup(`${manualTag}<div class="popup-name">${data.name}</div><div class="popup-job">Job: ${job}</div><div class="popup-time">Last seen: ${timeAgo(data.ts)}</div><div class="popup-coords">${data.lat.toFixed(5)}, ${data.lng.toFixed(5)}</div>${teammatesHtml}`).openPopup();
       });
       markers[uid] = m;
     }
@@ -792,8 +819,9 @@ async function updateMyJob(jobId) {
   const jobName = jobId && allJobs[jobId] ? allJobs[jobId].name : null;
   const btn = document.getElementById('my-job-btn');
   btn.textContent = jobName ? jobName.toUpperCase() : 'SET JOB';
-  btn.className = jobName ? 'assigned' : '';
-  btn.id = 'my-job-btn';
+  // Gold when assigned, blue when unassigned
+  btn.style.borderColor = jobName ? 'var(--admin)' : 'var(--accent2)';
+  btn.style.color = jobName ? 'var(--admin)' : 'var(--accent2)';
   await setDoc(doc(db,'users',myEntry.uid), { jobId: jobId||null, updatedAt: { seconds: Math.floor(Date.now()/1000), nanoseconds: 0 } }, {merge:true});
 }
 
@@ -921,6 +949,11 @@ document.getElementById('join-btn').addEventListener('click', async () => {
       jobBtn.addEventListener('click', openJobSelectModal);
 
       // Place Me button
+      // Set initial job button style (unassigned = blue)
+      const jobBtnEl = document.getElementById('my-job-btn');
+      jobBtnEl.style.borderColor = 'var(--accent2)';
+      jobBtnEl.style.color = 'var(--accent2)';
+
       const placeMeBtn = document.getElementById('place-me-btn');
       placeMeBtn.classList.remove('hidden');
 
