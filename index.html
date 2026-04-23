@@ -24,8 +24,8 @@
   body { background: var(--bg); color: var(--text); font-family: var(--sans); height: 100dvh; display: flex; flex-direction: column; overflow: hidden; }
 
   /* LOGIN */
-  #login-screen { position: fixed; inset: 0; background: var(--bg); display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 9999; padding: 2rem; }
-  .login-box { width: 100%; max-width: 340px; background: var(--panel); border: 1px solid var(--border); border-top: 2px solid var(--accent); padding: 2rem; }
+  #login-screen { position: fixed; inset: 0; background: var(--bg); display: flex; flex-direction: column; align-items: center; justify-content: flex-start; z-index: 9999; padding: 2rem; padding-top: max(2rem, env(safe-area-inset-top)); overflow-y: auto; }
+  .login-box { width: 100%; max-width: 340px; background: var(--panel); border: 1px solid var(--border); border-top: 2px solid var(--accent); padding: 2rem; margin-top: 1.5rem; }
   .login-logo { font-family: var(--mono); font-size: 1.1rem; color: var(--accent); letter-spacing: 0.2em; margin-bottom: 0.25rem; }
   .login-sub { font-size: 0.75rem; color: var(--muted); letter-spacing: 0.1em; text-transform: uppercase; margin-bottom: 2rem; }
   .login-label { font-family: var(--mono); font-size: 0.7rem; color: var(--muted); letter-spacing: 0.15em; text-transform: uppercase; margin-bottom: 0.5rem; display: block; }
@@ -286,7 +286,7 @@ const firebaseConfig = {
   appId: "1:161479517826:web:293f909d8f24a59451769b"
 };
 
-const APP_VERSION    = '1.5';
+const APP_VERSION    = '1.8';
 const MAP_CENTER     = [29.935773, 34.952498];
 const MAP_ZOOM       = 15;
 const POLL_INTERVAL  = 2 * 60 * 1000;
@@ -533,7 +533,11 @@ function createUserIcon(name, color, stale, jobName, manual) {
 function renderMarkers() {
   Object.entries(allUsers).forEach(([uid, data]) => {
     if (!data.lat || !data.lng) return;
-    const visible = activeFilter==='all' || data.jobId===activeFilter;
+    // A user is visible if: no job filter active, OR they match the active job filter
+    // Also respect jobStatusFilter — hide users on closed jobs when viewing active only
+    const jobIsClosed = data.jobId && allJobs[data.jobId] && allJobs[data.jobId].closed;
+    const hiddenByStatus = jobStatusFilter === 'active' && jobIsClosed;
+    const visible = !hiddenByStatus && (activeFilter==='all' || data.jobId===activeFilter);
     const color = COLOR_MAP[uid] || COLORS[0];
     const stale = (Date.now()-data.ts) > STALE_AFTER;
     const jobName = data.jobId && allJobs[data.jobId] ? allJobs[data.jobId].name : null;
@@ -784,6 +788,8 @@ function renderManageJobsList() {
         closed: !isClosed,
         closedAt: !isClosed ? Math.floor(Date.now()/1000) : null
       }, {merge:true});
+      // Reset filter so closing a job doesn't hide all users
+      if (activeFilter === jid) activeFilter = 'all';
       renderManageJobsList();
     });
     list.appendChild(item);
@@ -853,7 +859,8 @@ function startListeners() {
     snap.docChanges().forEach(change => {
       const jid = change.doc.id;
       if (change.type==='removed') { delete allJobs[jid]; if(activeFilter===jid) activeFilter='all'; return; }
-      allJobs[jid] = change.doc.data();
+      // Merge incoming job data with existing to preserve all fields
+      allJobs[jid] = Object.assign({}, allJobs[jid] || {}, change.doc.data());
     });
     renderJobFilterBar(); renderJobPins(); renderUserList();
   });
