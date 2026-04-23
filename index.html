@@ -46,20 +46,20 @@
   .login-error { font-family: var(--mono); font-size: 0.75rem; color: var(--warn); margin-top: 0.75rem; min-height: 1rem; }
 
   /* HEADER */
-  #header { background: var(--panel); border-bottom: 1px solid var(--border); padding: 0.6rem 1rem; display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; z-index: 100; }
-  .header-left { display: flex; align-items: center; gap: 0.75rem; }
+  #header { background: var(--panel); border-bottom: 1px solid var(--border); padding: 0.6rem 1rem; display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; z-index: 100; gap: 0.75rem; }
+  .header-left { display: flex; align-items: center; gap: 0.75rem; min-width: 0; flex-shrink: 1; }
   .logo { font-family: var(--mono); font-size: 0.9rem; color: var(--accent); letter-spacing: 0.2em; }
   .user-badge { font-family: var(--mono); font-size: 0.7rem; color: var(--text); background: var(--bg); border: 1px solid var(--border); padding: 0.2rem 0.6rem; letter-spacing: 0.1em; }
   .user-badge.is-admin { color: var(--admin); border-color: var(--admin); }
   .user-badge.is-viewer { color: var(--accent2); border-color: var(--accent2); }
-  .header-right { display: flex; align-items: center; gap: 0.5rem; }
+  .header-right { display: flex; align-items: center; gap: 0.5rem; flex-shrink: 0; }
   .active-count { font-family: var(--mono); font-size: 0.7rem; color: var(--accent2); letter-spacing: 0.1em; }
 
   /* ADMIN TOOLBAR */
-  #admin-toolbar { background: rgba(255,215,0,0.04); border-bottom: 1px solid rgba(255,215,0,0.15); padding: 0.4rem 1rem; display: none; gap: 0.5rem; flex-shrink: 0; z-index: 100; flex-wrap: wrap; }
+  #admin-toolbar { background: rgba(0,191,255,0.04); border-bottom: 1px solid rgba(0,191,255,0.15); padding: 0.4rem 1rem; display: none; gap: 0.5rem; flex-shrink: 0; z-index: 100; flex-wrap: wrap; }
   #admin-toolbar.visible { display: flex; }
-  .admin-btn { font-family: var(--mono); font-size: 0.7rem; letter-spacing: 0.1em; text-transform: uppercase; padding: 0.35rem 0.75rem; border: 1px solid var(--admin); background: transparent; color: var(--admin); cursor: pointer; white-space: nowrap; }
-  .admin-btn:active { background: rgba(255,215,0,0.12); }
+  .admin-btn { font-family: var(--mono); font-size: 0.7rem; letter-spacing: 0.1em; text-transform: uppercase; padding: 0.35rem 0.75rem; border: 1px solid var(--accent2); background: transparent; color: var(--accent2); cursor: pointer; white-space: nowrap; }
+  .admin-btn:active { background: rgba(0,191,255,0.12); }
   .admin-btn.danger { border-color: var(--warn); color: var(--warn); }
 
   /* STATUS BAR */
@@ -286,7 +286,7 @@ const firebaseConfig = {
   appId: "1:161479517826:web:293f909d8f24a59451769b"
 };
 
-const APP_VERSION    = '1.3';
+const APP_VERSION    = '1.5';
 const MAP_CENTER     = [29.935773, 34.952498];
 const MAP_ZOOM       = 15;
 const POLL_INTERVAL  = 2 * 60 * 1000;
@@ -841,14 +841,10 @@ function startListeners() {
     snap.docChanges().forEach(change => {
       const uid = change.doc.id;
       if (change.type==='removed') { if(markers[uid]){map.removeLayer(markers[uid]);delete markers[uid];} delete allUsers[uid]; return; }
-      const data = change.doc.data();
-      data.ts = data.updatedAt?.seconds ? data.updatedAt.seconds*1000 : Date.now();
-      if (!data.lat || !data.lng) {
-        // No position yet — store but don't render marker
-        allUsers[uid] = data;
-        return;
-      }
-      allUsers[uid] = data;
+      const incoming = change.doc.data();
+      incoming.ts = incoming.updatedAt?.seconds ? incoming.updatedAt.seconds*1000 : Date.now();
+      // Merge with existing local data so partial writes don't wipe position
+      allUsers[uid] = Object.assign({}, allUsers[uid] || {}, incoming);
     });
     renderMarkers(); renderUserList();
   });
