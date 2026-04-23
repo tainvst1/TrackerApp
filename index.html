@@ -284,7 +284,7 @@ const firebaseConfig = {
   appId: "1:161479517826:web:293f909d8f24a59451769b"
 };
 
-const APP_VERSION    = '0.7';
+const APP_VERSION    = '0.71';
 const MAP_CENTER     = [29.935773, 34.952498];
 const MAP_ZOOM       = 15;
 const POLL_INTERVAL  = 2 * 60 * 1000;
@@ -895,13 +895,23 @@ document.getElementById('join-btn').addEventListener('click', async () => {
         placeMeBtn.style.color = 'var(--warn)';
         document.getElementById('map').classList.add('pin-drop-mode');
 
-        function onPlaceMeClick(e) {
-          map.off('click', onPlaceMeClick);
-          document.getElementById('map').classList.remove('pin-drop-mode');
+        let placeMeHandlerFired = false;
+
+        function resetPlaceMeBtn() {
           placeMeActive = false;
+          placeMeHandlerFired = false;
           placeMeBtn.textContent = 'PLACE ME';
           placeMeBtn.style.borderColor = 'var(--accent2)';
           placeMeBtn.style.color = 'var(--accent2)';
+          document.getElementById('map').classList.remove('pin-drop-mode');
+        }
+
+        function onPlaceMeClick(e) {
+          if (placeMeHandlerFired) return;
+          placeMeHandlerFired = true;
+          map.off('click', onPlaceMeClick);
+          document.removeEventListener('keydown', onKeyCancel);
+          resetPlaceMeBtn();
           const { lat, lng } = e.latlng;
           lastPos = { lat, lng };
           setDoc(doc(db, 'users', myEntry.uid), {
@@ -918,18 +928,14 @@ document.getElementById('join-btn').addEventListener('click', async () => {
           if (ev.key === 'Escape') {
             map.off('click', onPlaceMeClick);
             document.removeEventListener('keydown', onKeyCancel);
-            document.getElementById('map').classList.remove('pin-drop-mode');
-            placeMeActive = false;
-            placeMeBtn.textContent = 'PLACE ME';
-            placeMeBtn.style.borderColor = 'var(--accent2)';
-            placeMeBtn.style.color = 'var(--accent2)';
+            resetPlaceMeBtn();
           }
         }
 
         setTimeout(() => {
           map.on('click', onPlaceMeClick);
           document.addEventListener('keydown', onKeyCancel, { once: true });
-        }, 300);
+        }, 500);
       });
     }
 
