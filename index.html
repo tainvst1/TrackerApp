@@ -144,8 +144,7 @@
   .hidden { display: none !important; }
 
   /* SET JOB BUTTON */
-  #my-job-btn { font-family: var(--mono); font-size: 0.6rem; letter-spacing: 0.05em; text-transform: uppercase; padding: 0.2rem 0.45rem; border: 1px solid var(--border); background: transparent; color: var(--muted); cursor: pointer; max-width: 90px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  #my-job-btn.assigned { border-color: var(--admin); color: var(--admin); }
+  #my-job-btn { max-width: 120px; overflow: hidden; text-overflow: ellipsis; }
 </style>
 </head>
 <body>
@@ -177,7 +176,6 @@
     <div class="user-badge" id="my-name-badge">---</div>
   </div>
   <div class="header-right">
-    <button id="my-job-btn" class="hidden">SET JOB</button>
     <button id="place-me-btn" class="hidden" style="font-family:var(--mono);font-size:0.6rem;letter-spacing:0.05em;text-transform:uppercase;padding:0.2rem 0.45rem;border:1px solid var(--accent);background:transparent;color:var(--accent);cursor:pointer;">PLACE ME</button>
     <button id="use-gps-btn" class="hidden" style="font-family:var(--mono);font-size:0.6rem;letter-spacing:0.05em;text-transform:uppercase;padding:0.2rem 0.45rem;border:1px solid var(--warn);background:transparent;color:var(--warn);cursor:pointer;">USE GPS</button>
     <div class="active-count" id="active-count">0 ONLINE</div>
@@ -195,8 +193,9 @@
 
 <!-- ADMIN TOOLBAR -->
 <div id="admin-toolbar">
-  <button class="admin-btn" id="btn-create-job">+ New Job</button>
-  <button class="admin-btn" id="btn-manage-jobs">Manage Jobs</button>
+  <button id="my-job-btn" class="hidden admin-btn">SET JOB</button>
+  <button class="admin-btn hidden" id="btn-create-job">+ New Job</button>
+  <button class="admin-btn hidden" id="btn-manage-jobs">Manage Jobs</button>
 </div>
 
 <!-- STATUS BAR -->
@@ -1004,8 +1003,12 @@ document.getElementById('join-btn').addEventListener('click', async () => {
     if (myEntry.role==='admin') badge.classList.add('is-admin');
     if (myEntry.role==='viewer') badge.classList.add('is-viewer');
 
-    if (myEntry.role==='admin' || myEntry.role==='viewer') {
+    if (myEntry.role !== 'viewer') {
       document.getElementById('admin-toolbar').classList.add('visible');
+    }
+    if (myEntry.role === 'admin' || myEntry.role === 'viewer') {
+      document.getElementById('btn-create-job').classList.remove('hidden');
+      document.getElementById('btn-manage-jobs').classList.remove('hidden');
     }
 
     if (myEntry.role !== 'viewer') {
@@ -1013,11 +1016,9 @@ document.getElementById('join-btn').addEventListener('click', async () => {
       jobBtn.classList.remove('hidden');
       jobBtn.addEventListener('click', openJobSelectModal);
 
-      // Place Me button
       // Set initial job button style (unassigned = blue)
-      const jobBtnEl = document.getElementById('my-job-btn');
-      jobBtnEl.style.borderColor = 'var(--accent2)';
-      jobBtnEl.style.color = 'var(--accent2)';
+      jobBtn.style.borderColor = 'var(--accent2)';
+      jobBtn.style.color = 'var(--accent2)';
 
       const placeMeBtn = document.getElementById('place-me-btn');
       placeMeBtn.classList.remove('hidden');
