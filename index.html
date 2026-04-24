@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -670,9 +670,9 @@ async function writePosition(lat, lng, accuracy) {
     setStatus(`GPS resumed \u00B7 \u00B1${Math.round(accuracy)}m`, 'active');
   }
 
-  // On first fix (no lastPos), also require good accuracy before writing
-  if (!lastPos && accuracy > GPS_ACCURACY_THRESHOLD) {
-    setStatus(`Waiting for GPS \u00B7 cell only \u00B1${Math.round(accuracy)}m`, 'polling');
+  // Require good accuracy before writing any position update
+  if (accuracy > GPS_ACCURACY_THRESHOLD) {
+    setStatus(lastPos ? `Poor GPS skipped · ±${Math.round(accuracy)}m` : `Waiting for GPS · ±${Math.round(accuracy)}m`, 'polling');
     startCountdown();
     return;
   }
