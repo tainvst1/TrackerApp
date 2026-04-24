@@ -175,6 +175,10 @@
   <div class="header-left">
     <div class="logo">/// TEAM TRACK</div>
     <div class="user-badge" id="my-name-badge">---</div>
+    <select id="site-selector" style="display:none;font-family:var(--mono);font-size:0.65rem;letter-spacing:0.08em;background:var(--bg);border:1px solid var(--accent2);color:var(--accent2);padding:0.2rem 0.5rem;cursor:pointer;outline:none;text-transform:uppercase;">
+      <option value="site1">Site 1</option>
+      <option value="site2">Site 2</option>
+    </select>
   </div>
   <div class="header-right">
     <button id="my-job-btn" class="hidden">SET JOB</button>
@@ -286,9 +290,12 @@ const firebaseConfig = {
   appId: "1:161479517826:web:293f909d8f24a59451769b"
 };
 
-const APP_VERSION    = '2.0';
-const MAP_CENTER     = [29.935773, 34.952498];
-const MAP_ZOOM       = 15;
+const APP_VERSION    = '3.0';
+const SITES = [
+  { id: 'site1', name: 'Site 1', center: [29.935773, 34.952498], zoom: 15 },
+  { id: 'site2', name: 'Site 2', center: [30.335189, 36.142987], zoom: 15 },
+];
+const SITE_RADIUS_KM = 30;
 const POLL_INTERVAL  = 2 * 60 * 1000;
 const MOVE_THRESHOLD = 20;
 const STALE_AFTER    = 15 * 60 * 1000; // 15 min — heartbeat runs every 5 min so this is safe
@@ -327,10 +334,11 @@ let pendingJobName = null;
 let selectedJobId = null;
 let myCurrentJob = null;
 let isManualPosition = false;
+let currentSite = SITES[0];
 const GPS_ACCURACY_THRESHOLD = 30; // metres
 
 // ── MAP ──────────────────────────────────────────────────
-const map = L.map('map', { center: MAP_CENTER, zoom: MAP_ZOOM, zoomControl: true, attributionControl: false });
+const map = L.map('map', { center: SITES[0].center, zoom: SITES[0].zoom, zoomControl: true, attributionControl: false });
 L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { maxZoom: 19 }).addTo(map);
 
 // ── UTILS ────────────────────────────────────────────────
@@ -338,6 +346,26 @@ function haversineMeters(lat1, lon1, lat2, lon2) {
   const R = 6371000, dLat=(lat2-lat1)*Math.PI/180, dLon=(lon2-lon1)*Math.PI/180;
   const a = Math.sin(dLat/2)**2 + Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLon/2)**2;
   return R*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));
+}
+
+function getUserSite(lat, lng) {
+  // Returns the site the user is closest to, within 30km radius
+  let closest = null;
+  let closestDist = Infinity;
+  SITES.forEach(site => {
+    const dist = haversineMeters(lat, lng, site.center[0], site.center[1]) / 1000;
+    if (dist < closestDist) {
+      closestDist = dist;
+      closest = site;
+    }
+  });
+  return closest;
+}
+
+function isOnCurrentSite(lat, lng) {
+  if (!lat || !lng) return false;
+  const dist = haversineMeters(lat, lng, currentSite.center[0], currentSite.center[1]) / 1000;
+  return dist <= SITE_RADIUS_KM;
 }
 
 function timeAgo(ms) {
@@ -394,6 +422,7 @@ function renderJobFilterBar() {
 
   // Job buttons filtered by status
   const visibleJobs = Object.entries(allJobs).filter(([,job]) => {
+    if (job.siteId && job.siteId !== currentSite.id) return false;
     if (jobStatusFilter === 'active') return !job.closed;
     if (jobStatusFilter === 'closed') return !!job.closed;
     return true;
@@ -426,6 +455,7 @@ function renderJobPins() {
   Object.entries(allJobs).forEach(([jid, job]) => {
     if (!job.lat || !job.lng) return;
     // Hide pins not matching current status filter
+    if (job.siteId && job.siteId !== currentSite.id) return;
     if (jobStatusFilter === 'active' && job.closed) return;
     if (jobStatusFilter === 'closed' && !job.closed) return;
     const pinColor = job.closed ? '#888' : 'var(--admin)';
@@ -533,8 +563,12 @@ function createUserIcon(name, color, stale, jobName, manual) {
 function renderMarkers() {
   Object.entries(allUsers).forEach(([uid, data]) => {
     if (!data.lat || !data.lng) return;
+    // Filter by current site using GPS position
+    if (!isOnCurrentSite(data.lat, data.lng)) {
+      if (markers[uid]) { map.removeLayer(markers[uid]); }
+      return;
+    }
     // A user is visible if: no job filter active, OR they match the active job filter
-    // Also respect jobStatusFilter — hide users on closed jobs when viewing active only
     const jobIsClosed = data.jobId && allJobs[data.jobId] && allJobs[data.jobId].closed;
     const hiddenByStatus = jobStatusFilter === 'active' && jobIsClosed;
     const visible = !hiddenByStatus && (activeFilter==='all' || data.jobId===activeFilter);
@@ -576,7 +610,8 @@ function renderUserList() {
   const list = document.getElementById('user-list');
   list.innerHTML = '';
   const entries = Object.entries(allUsers).sort((a,b)=>b[1].ts-a[1].ts);
-  const filtered = activeFilter==='all' ? entries : entries.filter(([,d])=>d.jobId===activeFilter);
+  const onSite = entries.filter(([,d]) => isOnCurrentSite(d.lat, d.lng));
+  const filtered = activeFilter==='all' ? onSite : onSite.filter(([,d])=>d.jobId===activeFilter);
   filtered.forEach(([uid, data]) => {
     const color = COLOR_MAP[uid] || COLORS[0];
     const stale = (Date.now()-data.ts) > STALE_AFTER;
@@ -593,7 +628,7 @@ function renderUserList() {
     chip.addEventListener('click', () => { if(data.lat&&data.lng) map.setView([data.lat,data.lng],17,{animate:true}); });
     list.appendChild(chip);
   });
-  const active = Object.values(allUsers).filter(d=>(Date.now()-d.ts)<STALE_AFTER).length;
+  const active = Object.values(allUsers).filter(d=>(Date.now()-d.ts)<STALE_AFTER && isOnCurrentSite(d.lat, d.lng)).length;
   document.getElementById('active-count').textContent = `${active} ONLINE`;
 }
 
@@ -740,6 +775,7 @@ document.getElementById('create-job-confirm').addEventListener('click', () => {
     try {
       await setDoc(doc(db, 'jobs', jid), {
         name: jobName, lat, lng,
+        siteId: currentSite.id,
         createdBy: myEntry.name,
         createdAt: { seconds: Math.floor(Date.now()/1000), nanoseconds: 0 }
       });
@@ -1050,6 +1086,21 @@ document.getElementById('join-btn').addEventListener('click', async () => {
         pollGPS().then(() => { pollTimer = setTimeout(schedulePoll, POLL_INTERVAL); });
       });
     }
+
+    // Show site selector and wire it up
+    const siteSelector = document.getElementById('site-selector');
+    siteSelector.style.display = 'block';
+    siteSelector.addEventListener('change', () => {
+      const site = SITES.find(s => s.id === siteSelector.value);
+      if (!site) return;
+      currentSite = site;
+      map.setView(site.center, site.zoom, { animate: true });
+      activeFilter = 'all';
+      renderJobFilterBar();
+      renderJobPins();
+      renderMarkers();
+      renderUserList();
+    });
 
     startListeners();
     checkVersion();
