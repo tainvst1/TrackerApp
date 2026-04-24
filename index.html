@@ -175,17 +175,22 @@
   <div class="header-left">
     <div class="logo">/// TEAM TRACK</div>
     <div class="user-badge" id="my-name-badge">---</div>
-    <select id="site-selector" style="display:none;font-family:var(--mono);font-size:0.6rem;letter-spacing:0.05em;background:var(--bg);border:1px solid var(--accent2);color:var(--accent2);padding:0.2rem 0.4rem;cursor:pointer;outline:none;text-transform:uppercase;max-width:70px;">
-      <option value="site1">Site 1</option>
-      <option value="site2">Site 2</option>
-    </select>
   </div>
   <div class="header-right">
     <button id="my-job-btn" class="hidden">SET JOB</button>
-    <button id="place-me-btn" class="hidden" style="font-family:var(--mono);font-size:0.6rem;letter-spacing:0.05em;text-transform:uppercase;padding:0.2rem 0.45rem;border:1px solid var(--accent2);background:transparent;color:var(--accent2);cursor:pointer;">PLACE ME</button>
-    <button id="use-gps-btn" class="hidden" style="font-family:var(--mono);font-size:0.6rem;letter-spacing:0.05em;text-transform:uppercase;padding:0.2rem 0.45rem;border:1px solid var(--accent);background:transparent;color:var(--accent);cursor:pointer;">USE GPS</button>
+    <button id="place-me-btn" class="hidden" style="font-family:var(--mono);font-size:0.6rem;letter-spacing:0.05em;text-transform:uppercase;padding:0.2rem 0.45rem;border:1px solid var(--accent);background:transparent;color:var(--accent);cursor:pointer;">PLACE ME</button>
+    <button id="use-gps-btn" class="hidden" style="font-family:var(--mono);font-size:0.6rem;letter-spacing:0.05em;text-transform:uppercase;padding:0.2rem 0.45rem;border:1px solid var(--warn);background:transparent;color:var(--warn);cursor:pointer;">USE GPS</button>
     <div class="active-count" id="active-count">0 ONLINE</div>
   </div>
+</div>
+
+<!-- SITE BAR -->
+<div id="site-bar" style="display:none;background:var(--bg);border-bottom:1px solid var(--border);padding:0.3rem 0.75rem;flex-shrink:0;z-index:100;align-items:center;gap:0.5rem;">
+  <span style="font-family:var(--mono);font-size:0.6rem;color:var(--muted);letter-spacing:0.1em;text-transform:uppercase;">SITE</span>
+  <select id="site-selector" style="font-family:var(--mono);font-size:0.65rem;letter-spacing:0.05em;background:var(--bg);border:1px solid var(--accent2);color:var(--accent2);padding:0.2rem 0.5rem;cursor:pointer;outline:none;text-transform:uppercase;flex:1;">
+    <option value="site1">Site 1</option>
+    <option value="site2">Site 2</option>
+  </select>
 </div>
 
 <!-- ADMIN TOOLBAR -->
@@ -290,7 +295,7 @@ const firebaseConfig = {
   appId: "1:161479517826:web:293f909d8f24a59451769b"
 };
 
-const APP_VERSION    = '3.1';
+const APP_VERSION    = '3.2';
 const SITES = [
   { id: 'site1', name: 'Site 1', center: [29.935773, 34.952498], zoom: 15 },
   { id: 'site2', name: 'Site 2', center: [30.335189, 36.142987], zoom: 15 },
@@ -1033,8 +1038,8 @@ document.getElementById('join-btn').addEventListener('click', async () => {
           placeMeActive = false;
           placeMeHandlerFired = false;
           placeMeBtn.textContent = 'PLACE ME';
-          placeMeBtn.style.borderColor = 'var(--accent2)';
-          placeMeBtn.style.color = 'var(--accent2)';
+          placeMeBtn.style.borderColor = 'var(--accent)';
+          placeMeBtn.style.color = 'var(--accent)';
           document.getElementById('map').classList.remove('pin-drop-mode');
         }
 
@@ -1088,8 +1093,9 @@ document.getElementById('join-btn').addEventListener('click', async () => {
     }
 
     // Show site selector and wire it up
+    const siteBar = document.getElementById('site-bar');
+    siteBar.style.display = 'flex';
     const siteSelector = document.getElementById('site-selector');
-    siteSelector.style.display = 'block';
     siteSelector.addEventListener('change', () => {
       const site = SITES.find(s => s.id === siteSelector.value);
       if (!site) return;
